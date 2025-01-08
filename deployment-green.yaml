@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: green-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: color-demo
+      color: green
+  template:
+    metadata:
+      labels:
+        app: color-demo
+        color: green
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: html
+          mountPath: /usr/share/nginx/html/index.html
+          subPath: index-green.html
+      volumes:
+      - name: html
+        configMap:
+          name: color-pages
+          items:
+          - key: index-green.html
+            path: index-green.html
