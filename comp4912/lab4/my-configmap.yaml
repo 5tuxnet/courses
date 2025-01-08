@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: color-pages
+data:
+  index-red.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Red Pod</title>
+      <style>
+        body {
+          background-color: red;
+          color: white;
+          text-align: center;
+          margin-top: 100px;
+          font-family: Arial, sans-serif;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>This is the RED Page</h1>
+      <p>You are hitting one of the pods in our cluster.</p>
+    </body>
+    </html>
+
+  index-green.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Green Pod</title>
+      <style>
+        body {
+          background-color: green;
+          color: white;
+          text-align: center;
+          margin-top: 100px;
+          font-family: Arial, sans-serif;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>This is the GREEN Page</h1>
+      <p>You are hitting one of the pods in our cluster.</p>
+    </body>
+    </html>
+
+  index-yellow.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Yellow Pod</title>
+      <style>
+        body {
+          background-color: yellow;
+          color: black;
+          text-align: center;
+          margin-top: 100px;
+          font-family: Arial, sans-serif;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>This is the YELLOW Page</h1>
+      <p>You are hitting one of the pods in our cluster.</p>
+    </body>
+    </html>
