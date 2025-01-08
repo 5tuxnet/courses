@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yellow-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: color-demo
+      color: yellow
+  template:
+    metadata:
+      labels:
+        app: color-demo
+        color: yellow
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: html
+          mountPath: /usr/share/nginx/html/index.html
+          subPath: index-yellow.html
+      volumes:
+      - name: html
+        configMap:
+          name: color-pages
+          items:
+          - key: index-yellow.html
+            path: index-yellow.html
