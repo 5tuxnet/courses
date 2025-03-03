@@ -1,3 +1,6 @@
+# Ensure to configure AWS credentail via 'aws configure' command before using this file (since provider's profie is set to default)
+# To do this, first Create a user in AWS with AmazonEC2FullAccess policy and generate an Access Key for the user. The generated Access/Secret Keys are needed to run 'aws configure'.
+
 provider "aws" {
   profile = "default"
   region = "us-west-1"
