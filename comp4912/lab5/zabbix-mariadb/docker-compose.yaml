@@ -1,0 +1,67 @@
+version: '3.5'
+services:
+  mariadb-db:
+    image: mariadb:10.5
+    container_name: zabbix-mariadb
+    environment:
+      - MYSQL_DATABASE=zabbix
+      - MYSQL_USER=zabbix
+      - MYSQL_PASSWORD=zabbix
+      - MYSQL_ROOT_PASSWORD=strong_root_password
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+
+  zabbix-server:
+    image: zabbix/zabbix-server-mysql:latest
+    container_name: zabbix-server
+    depends_on:
+      - mariadb-db
+    links:
+      - mariadb-db:mariadb-db
+    environment:
+      - DB_SERVER_HOST=mariadb-db
+      - MYSQL_USER=zabbix
+      - MYSQL_PASSWORD=zabbix
+      - MYSQL_DATABASE=zabbix
+      - PHP_TZ=America/Vancouver
+    ports:
+      - "10051:10051"  # Zabbix server listening port
+    restart: unless-stopped
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-mysql:latest
+    container_name: zabbix-web
+    depends_on:
+      - zabbix-server
+      - mariadb-db
+    links:
+      - zabbix-server:zabbix-server
+      - mariadb-db:mariadb-db
+    environment:
+      - DB_SERVER_HOST=mariadb-db
+      - MYSQL_USER=zabbix
+      - MYSQL_PASSWORD=zabbix
+      - MYSQL_DATABASE=zabbix
+      - PHP_TZ=UTC
+      - ZBX_SERVER_HOST=zabbix-server
+    ports:
+      - "8080:8080"  # Zabbix frontend on HTTP (Nginx)
+    restart: unless-stopped
+
+  # Optional Zabbix agent container
+  zabbix-agent:
+    image: zabbix/zabbix-agent:latest
+    container_name: zabbix-agent
+    depends_on:
+      - zabbix-server
+    links:
+      - zabbix-server:zabbix-server
+    environment:
+      - ZBX_SERVER_HOST=zabbix-server
+    restart: unless-stopped
+
+volumes:
+  mariadb_data:
