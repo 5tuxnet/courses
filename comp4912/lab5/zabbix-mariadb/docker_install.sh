@@ -6,4 +6,4 @@ sudo systemctl enable docker
 sudo systemctl start docker
 
 docker --version
-docker compose version
+docker-compose version
