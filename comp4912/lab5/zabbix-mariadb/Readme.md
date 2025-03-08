@@ -2,4 +2,4 @@ Store the yaml file in a directory and run the following command from inside the
 
 $ docker-compose up -d
 
-When the docker image is running (can be verified by 'docker ps'), you may use 'hostname -I' command to find your host IP to access Zabbix server GUI via your browser.
+When the docker containers are running (can be verified by 'docker ps'), you may use 'hostname -I' command to find IP address of your Linux VM to access Zabbix server GUI via your host browser.
