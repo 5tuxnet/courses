@@ -14,7 +14,9 @@ Upon successful completion of this course, the student will be able to:
 - Describe fundamental concepts in Public and Private Cloud environments.
 - Conduct a performance assessment combined with a review of security baselines in cloud environments.
 - Describe container management and orchestration for cloud-based network solutions.
-- Automate resource provisioning process in virtual environments.
+- Automate the resource provisioning process in virtual environments.
 - Explain the Infrastructure-as-a-Code (IaaC) concept for real-world applications.
 
 Link: https://www.bcit.ca/outlines/20251079179/
+
+The content of this repo can be shared/reused for educational purposes. 
