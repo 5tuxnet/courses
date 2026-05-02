@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Packet Queuing & Loss — Interactive Simulation</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600&display=swap');
+
+  :root {
+    --bg:        #0d1117;
+    --bg2:       #161b22;
+    --bg3:       #1c2330;
+    --border:    rgba(255,255,255,0.08);
+    --text:      #e6edf3;
+    --muted:     #7d8590;
+    --blue:      #388bfd;
+    --green:     #3fb950;
+    --red:       #f85149;
+    --amber:     #d29922;
+    --blue-glow: rgba(56,139,253,0.15);
+    --green-glow:rgba(63,185,80,0.15);
+    --red-glow:  rgba(248,81,73,0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  /* ── header ─────────────────────────────────── */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .header-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--blue), #58a6ff);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  header h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
+  header p  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .badge {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    letter-spacing: 0.5px;
+  }
+
+  /* ── layout ──────────────────────────────────── */
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 28px 24px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* ── card ────────────────────────────────────── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  /* ── sliders ─────────────────────────────────── */
+  .ctrl-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .ctrl-row:last-child { margin-bottom: 0; }
+  .ctrl-label {
+    font-size: 12px;
+    color: var(--muted);
+    min-width: 170px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .ctrl-row input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 3px;
+    background: var(--bg3);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  .ctrl-row input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--blue);
+    border: 2px solid var(--bg2);
+    box-shadow: 0 0 0 2px var(--blue);
+    cursor: pointer;
+    transition: transform .1s;
+  }
+  .ctrl-row input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  .ctrl-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    min-width: 64px;
+    text-align: right;
+  }
+
+  /* ── stats ───────────────────────────────────── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .stat {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    position: relative;
+    overflow: hidden;
+  }
+  .stat::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 10px 10px 0 0;
+  }
+  .stat.blue::before  { background: var(--blue); }
+  .stat.green::before { background: var(--green); }
+  .stat.red::before   { background: var(--red); }
+  .stat.amber::before { background: var(--amber); }
+
+  .stat-lbl { font-size: 10px; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px; font-family: 'JetBrains Mono', monospace; }
+  .stat-num { font-size: 26px; font-weight: 600; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+  .stat-unit { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* ── router diagram canvas ───────────────────── */
+  #routerCanvas {
+    width: 100%;
+    border-radius: 8px;
+    display: block;
+  }
+
+  /* ── chart area ──────────────────────────────── */
+  .chart-wrap {
+    position: relative;
+    width: 100%;
+    height: 200px;
+  }
+
+  /* ── legend ──────────────────────────────────── */
+  .legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .leg {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .leg-line { width: 20px; height: 3px; border-radius: 2px; }
+  .leg-dashed { width: 20px; height: 0; border-top: 2px dashed; }
+
+  /* ── insight banner ──────────────────────────── */
+  .insight {
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.6;
+    border: 1px solid var(--border);
+    background: var(--bg3);
+    color: var(--muted);
+    transition: all .3s;
+  }
+  .insight.ok     { border-color: rgba(63,185,80,0.3);  background: rgba(63,185,80,0.05);  color: #7ee787; }
+  .insight.warn   { border-color: rgba(210,153,34,0.3); background: rgba(210,153,34,0.05); color: #e3b341; }
+  .insight.danger { border-color: rgba(248,81,73,0.4);  background: rgba(248,81,73,0.07);  color: #ff7b72; }
+  .insight strong { font-weight: 600; }
+
+  /* ── buttons ─────────────────────────────────── */
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 7px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg3);
+    color: var(--muted);
+    cursor: pointer;
+    letter-spacing: 0.3px;
+    transition: all .15s;
+  }
+  button:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-glow); }
+  button.primary { border-color: var(--blue); color: var(--blue); }
+
+  /* ── concept boxes ───────────────────────────── */
+  .concepts {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  .concept {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .concept-icon { font-size: 20px; margin-bottom: 6px; }
+  .concept-title { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .concept-desc { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+  @media (max-width: 600px) {
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .concepts  { grid-template-columns: 1fr; }
+    header { padding: 14px 16px; }
+    main   { padding: 16px 12px 32px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-icon">📡</div>
+  <div>
+    <h1>Packet Queuing &amp; Loss</h1>
+    <p>Interactive simulation — Computer Networking</p>
+  </div>
+  <span class="badge">LIVE SIM</span>
+</header>
+
+<main>
+
+  <!-- concepts -->
+  <div class="concepts">
+    <div class="concept">
+      <div class="concept-icon">📥</div>
+      <div class="concept-title">Arrival Rate</div>
+      <div class="concept-desc">Rate at which packets arrive at the router input. When this exceeds the link capacity, congestion begins.</div>
+    </div>
+    <div class="concept">
+      <div class="concept-icon">🗄️</div>
+      <div class="concept-title">Buffer / Queue</div>
+      <div class="concept-desc">Finite memory in the router. Excess packets wait here. When full, newly arriving packets are dropped.</div>
+    </div>
+    <div class="concept">
+      <div class="concept-icon">🚫</div>
+      <div class="concept-title">Packet Loss</div>
+      <div class="concept-desc">Occurs when the buffer overflows. Lost packets must be retransmitted, degrading application performance.</div>
+    </div>
+  </div>
+
+  <!-- controls -->
+  <div class="card">
+    <div class="card-title">Parameters</div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">arrival_rate</span>
+      <input type="range" id="arrRate" min="1" max="20" value="8" step="1">
+      <span class="ctrl-val"><span id="arr-val">8</span> Mbps</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">transmission_rate</span>
+      <input type="range" id="txRate" min="1" max="20" value="10" step="1">
+      <span class="ctrl-val"><span id="tx-val">10</span> Mbps</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">buffer_size</span>
+      <input type="range" id="bufSize" min="2" max="20" value="10" step="1">
+      <span class="ctrl-val"><span id="buf-val">10</span> pkts</span>
+    </div>
+  </div>
+
+  <!-- stats -->
+  <div class="stat-grid">
+    <div class="stat blue">
+      <div class="stat-lbl">Buffer Fill</div>
+      <div class="stat-num" id="s-fill">0<span style="font-size:14px">%</span></div>
+      <div class="stat-unit">of buffer used</div>
+    </div>
+    <div class="stat amber">
+      <div class="stat-lbl">Queue Length</div>
+      <div class="stat-num" id="s-queue">0<span style="font-size:14px"> p</span></div>
+      <div class="stat-unit">packets waiting</div>
+    </div>
+    <div class="stat red">
+      <div class="stat-lbl">Loss Rate</div>
+      <div class="stat-num" id="s-loss">0<span style="font-size:14px">%</span></div>
+      <div class="stat-unit">this tick</div>
+    </div>
+    <div class="stat green">
+      <div class="stat-lbl">Throughput</div>
+      <div class="stat-num" id="s-tput">8<span style="font-size:14px"> M</span></div>
+      <div class="stat-unit">Mbps delivered</div>
+    </div>
+  </div>
+
+  <!-- router diagram -->
+  <div class="card" style="padding:16px 20px;">
+    <div class="card-title">Router diagram</div>
+    <canvas id="routerCanvas"></canvas>
+  </div>
+
+  <!-- chart -->
+  <div class="card">
+    <div class="card-title">Live chart</div>
+    <div class="legend">
+      <span class="leg"><span class="leg-line" style="background:#388bfd"></span>Arrival (Mbps)</span>
+      <span class="leg"><span class="leg-dashed" style="border-color:#3fb950"></span>Transmission (Mbps)</span>
+      <span class="leg"><span class="leg-line" style="background:#d29922"></span>Queue (pkts)</span>
+      <span class="leg"><span class="leg-dashed" style="border-color:#f85149"></span>Loss rate (%)</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartCanvas"></canvas>
+    </div>
+  </div>
+
+  <!-- insight -->
+  <div class="insight" id="insight-box">
+    Adjust the sliders above to observe queuing and packet loss behaviour in real time.
+  </div>
+
+  <!-- buttons -->
+  <div class="btn-row">
+    <button class="primary" onclick="resetSim()">⟳ Reset simulation</button>
+    <button onclick="setPreset('calm')">Preset: No congestion</button>
+    <button onclick="setPreset('edge')">Preset: At capacity</button>
+    <button onclick="setPreset('overload')">Preset: Overloaded</button>
+  </div>
+
+</main>
+
+<script>
+// ── colours ─────────────────────────────────────────────────
+const BLUE='#388bfd', GREEN='#3fb950', RED='#f85149', AMBER='#d29922';
+const BG='#0d1117', BG2='#161b22', BG3='#1c2330';
+const BORDER='rgba(255,255,255,0.08)', MUTED='#7d8590', TEXT='#e6edf3';
+
+// ── state ────────────────────────────────────────────────────
+let simQueue=0, tick=0, lastTime=0;
+const SIM_STEP_MS=800, MAX_HIST=30;
+let hist={arr:[],tx:[],queue:[],loss:[],labels:[]};
+
+// ── helpers ──────────────────────────────────────────────────
+const $=id=>document.getElementById(id);
+function getP(){ return { arr:+$('arrRate').value, tx:+$('txRate').value, buf:+$('bufSize').value }; }
+function updLabels(){
+  const p=getP();
+  $('arr-val').textContent=p.arr;
+  $('tx-val').textContent=p.tx;
+  $('buf-val').textContent=p.buf;
+}
+
+// ── simulation tick ──────────────────────────────────────────
+function simStep(){
+  const p=getP();
+  const arrPkts=Math.round(p.arr*1.5);
+  const txPkts =Math.round(p.tx *1.5);
+  simQueue+=arrPkts;
+  let dropped=0;
+  if(simQueue>p.buf){ dropped=simQueue-p.buf; simQueue=p.buf; }
+  simQueue=Math.max(0, simQueue-Math.min(txPkts,simQueue));
+  const lossNow=arrPkts>0?Math.round(dropped/arrPkts*100):0;
+  tick++;
+  hist.arr.push(p.arr); hist.tx.push(p.tx);
+  hist.queue.push(simQueue); hist.loss.push(lossNow);
+  hist.labels.push('t'+tick);
+  if(hist.arr.length>MAX_HIST){['arr','tx','queue','loss','labels'].forEach(k=>hist[k].shift());}
+  updateStats(p,dropped,lossNow);
+  updateChart(p);
+  drawRouter(p,dropped);
+}
+
+// ── stats ────────────────────────────────────────────────────
+function updateStats(p,dropped,lossNow){
+  const fillPct=Math.round(simQueue/p.buf*100);
+  $('s-fill').innerHTML  = fillPct+'<span style="font-size:14px">%</span>';
+  $('s-queue').innerHTML = simQueue+'<span style="font-size:14px"> p</span>';
+  $('s-loss').innerHTML  = lossNow+'<span style="font-size:14px">%</span>';
+  $('s-tput').innerHTML  = Math.min(p.arr,p.tx)+'<span style="font-size:14px"> M</span>';
+
+  // colour the loss stat
+  $('s-loss').style.color = lossNow>0 ? RED : GREEN;
+  $('s-fill').style.color = fillPct>=100 ? RED : fillPct>60 ? AMBER : GREEN;
+
+  const ib=$('insight-box');
+  if(p.arr<p.tx){
+    ib.className='insight ok';
+    ib.innerHTML='<strong>✓ No congestion:</strong> Arrival ('+p.arr+' Mbps) &lt; transmission ('+p.tx+' Mbps). Packets flow freely — queue stays empty, loss is 0%.';
+  } else if(p.arr===p.tx){
+    ib.className='insight warn';
+    ib.innerHTML='<strong>⚠ At capacity:</strong> Arrival equals transmission rate. Small bursts may build a queue. No sustained loss yet.';
+  } else if(simQueue<p.buf){
+    ib.className='insight warn';
+    ib.innerHTML='<strong>⚠ Queuing:</strong> Arrival ('+p.arr+' Mbps) &gt; transmission ('+p.tx+' Mbps). Buffer filling: '+simQueue+'/'+p.buf+' pkts. Loss begins once buffer is full.';
+  } else {
+    ib.className='insight danger';
+    ib.innerHTML='<strong>✕ Buffer full — packet loss!</strong> Buffer ('+p.buf+' pkts) is full. New arrivals are dropped (tail drop). Loss this tick: '+lossNow+'%.';
+  }
+}
+
+// ── chart ────────────────────────────────────────────────────
+let lineChart;
+function buildChart(){
+  const ctx=$('chartCanvas').getContext('2d');
+  lineChart=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:[],
+      datasets:[
+        {label:'Arrival (Mbps)',     data:[],borderColor:BLUE, backgroundColor:'rgba(56,139,253,0.12)',borderWidth:2,pointRadius:0,fill:true, tension:0.3,yAxisID:'y'},
+        {label:'Transmission (Mbps)',data:[],borderColor:GREEN,backgroundColor:'rgba(63,185,80,0.1)', borderWidth:2,pointRadius:0,fill:true, tension:0.3,borderDash:[4,3],yAxisID:'y'},
+        {label:'Queue (pkts)',       data:[],borderColor:AMBER,backgroundColor:'transparent',         borderWidth:2,pointRadius:0,fill:false,tension:0.3,yAxisID:'y2'},
+        {label:'Loss rate %',        data:[],borderColor:RED,  backgroundColor:'transparent',         borderWidth:2,pointRadius:0,fill:false,tension:0.3,borderDash:[3,2],yAxisID:'y3'},
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,
+        backgroundColor:'rgba(22,27,34,0.95)',borderColor:BORDER,borderWidth:1,
+        titleColor:TEXT,bodyColor:MUTED,
+        callbacks:{label:c=>c.dataset.label+': '+Math.round(c.parsed.y)}}},
+      scales:{
+        x:{ticks:{color:MUTED,font:{size:10,family:'JetBrains Mono'},maxTicksLimit:8},grid:{color:BORDER}},
+        y:{min:0,max:22,ticks:{color:MUTED,font:{size:10,family:'JetBrains Mono'},callback:v=>v+'M'},grid:{color:BORDER},
+           title:{display:true,text:'Rate (Mbps)',color:MUTED,font:{size:10}}},
+        y2:{position:'right',min:0,ticks:{color:AMBER,font:{size:10,family:'JetBrains Mono'},callback:v=>v+'p'},grid:{display:false}},
+        y3:{position:'right',min:0,max:100,display:false}
+      }
+    }
+  });
+}
+
+function updateChart(p){
+  if(!lineChart)return;
+  lineChart.data.labels=hist.labels;
+  lineChart.data.datasets[0].data=hist.arr;
+  lineChart.data.datasets[1].data=hist.tx;
+  lineChart.data.datasets[2].data=hist.queue;
+  lineChart.data.datasets[3].data=hist.loss;
+  lineChart.options.scales.y2.max=Math.max(p.buf+2,12);
+  lineChart.update('none');
+}
+
+// ── router diagram ───────────────────────────────────────────
+function drawRouter(p,dropped){
+  const canvas=$('routerCanvas');
+  const dpr=window.devicePixelRatio||1;
+  const W=canvas.offsetWidth||840;
+  const H=170;
+  if(canvas.width!==Math.round(W*dpr)){
+    canvas.width=Math.round(W*dpr);
+    canvas.height=Math.round(H*dpr);
+    canvas.style.height=H+'px';
+  }
+  const ctx=canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const fp=simQueue/p.buf;
+  const rX=W*0.35, rY=28, rW=W*0.3, rH=104;
+  const bPad=8;
+  const bX=rX+bPad, bY=rY+bPad, bW=rW-bPad*2, bH=rH-bPad*2;
+
+  // router box
+  ctx.fillStyle=BG3; ctx.strokeStyle=BORDER; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.roundRect(rX,rY,rW,rH,10); ctx.fill(); ctx.stroke();
+
+  // buffer fill
+  const fc=fp>=1?RED:fp>0.7?AMBER:GREEN;
+  const fH=bH*Math.min(fp,1);
+  if(fH>0){
+    ctx.fillStyle=fc+'28';
+    ctx.fillRect(bX,bY+bH-fH,bW,fH);
+    ctx.strokeStyle=fc; ctx.lineWidth=0.5;
+    ctx.strokeRect(bX,bY+bH-fH,bW,fH);
+  }
+  ctx.strokeStyle=BORDER; ctx.lineWidth=1;
+  ctx.strokeRect(bX,bY,bW,bH);
+
+  // slot lines
+  ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=0.5;
+  for(let i=1;i<p.buf;i++){
+    const sy=bY+i*(bH/p.buf);
+    ctx.beginPath(); ctx.moveTo(bX,sy); ctx.lineTo(bX+bW,sy); ctx.stroke();
+  }
+
+  // labels
+  ctx.fillStyle=TEXT; ctx.font='500 12px DM Sans'; ctx.textAlign='center';
+  ctx.fillText('Router Buffer',rX+rW/2,rY-10);
+  ctx.font='500 11px JetBrains Mono';
+  ctx.fillStyle=fp>=1?RED:MUTED;
+  ctx.fillText(simQueue+'/'+p.buf+' pkts',rX+rW/2,rY+rH+16);
+
+  // buffer limit dashed line
+  ctx.strokeStyle=AMBER; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(bX-6,bY); ctx.lineTo(bX+bW+6,bY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=AMBER; ctx.font='10px JetBrains Mono'; ctx.textAlign='right';
+  ctx.fillText('buffer limit',bX+bW+4,bY-4);
+
+  const aY=rY+rH/2;
+  const arrCol=p.arr>p.tx?RED:BLUE;
+
+  // arrival arrow
+  ctx.strokeStyle=arrCol; ctx.lineWidth=2.5; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(36,aY); ctx.lineTo(rX-4,aY); ctx.stroke();
+  ctx.fillStyle=arrCol;
+  ctx.beginPath(); ctx.moveTo(rX-2,aY); ctx.lineTo(rX-11,aY-5); ctx.lineTo(rX-11,aY+5); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=TEXT; ctx.font='12px DM Sans'; ctx.textAlign='center';
+  ctx.fillText(p.arr+' Mbps',(36+rX)/2,aY-9);
+  ctx.fillStyle=arrCol; ctx.font='11px JetBrains Mono';
+  ctx.fillText('arrival_rate',(36+rX)/2,aY+17);
+
+  // dropped packets indicator
+  if(dropped>0){
+    ctx.strokeStyle=RED; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(56,aY-26); ctx.lineTo(rX-14,aY-26); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=RED; ctx.font='500 11px DM Sans'; ctx.textAlign='center';
+    const mx=(56+rX-14)/2;
+    ctx.fillText('▼ '+dropped+' pkt'+(dropped>1?'s':'')+' dropped',mx,aY-34);
+  }
+
+  // transmission arrow
+  ctx.strokeStyle=GREEN; ctx.lineWidth=2.5; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(rX+rW+4,aY); ctx.lineTo(W-36,aY); ctx.stroke();
+  ctx.fillStyle=GREEN;
+  ctx.beginPath(); ctx.moveTo(W-36,aY); ctx.lineTo(W-46,aY-5); ctx.lineTo(W-46,aY+5); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=TEXT; ctx.font='12px DM Sans'; ctx.textAlign='center';
+  ctx.fillText(p.tx+' Mbps',(rX+rW+W-36)/2,aY-9);
+  ctx.fillStyle=GREEN; ctx.font='11px JetBrains Mono';
+  ctx.fillText('tx_rate',(rX+rW+W-36)/2,aY+17);
+}
+
+// ── controls ─────────────────────────────────────────────────
+function resetSim(){
+  simQueue=0; tick=0;
+  hist={arr:[],tx:[],queue:[],loss:[],labels:[]};
+  updLabels();
+  $('s-fill').innerHTML='0<span style="font-size:14px">%</span>';
+  $('s-fill').style.color=GREEN;
+  $('s-queue').innerHTML='0<span style="font-size:14px"> p</span>';
+  $('s-loss').innerHTML='0<span style="font-size:14px">%</span>';
+  $('s-loss').style.color=GREEN;
+  $('s-tput').innerHTML=getP().arr+'<span style="font-size:14px"> M</span>';
+  $('insight-box').className='insight';
+  $('insight-box').innerHTML='Simulation reset. Adjust the sliders and watch what happens.';
+  if(lineChart){lineChart.data.labels=[];lineChart.data.datasets.forEach(d=>d.data=[]);lineChart.update('none');}
+  drawRouter(getP(),0);
+}
+
+function setPreset(name){
+  const presets={
+    calm:    {arr:5, tx:14, buf:10},
+    edge:    {arr:10,tx:10, buf:10},
+    overload:{arr:18,tx:6,  buf:6},
+  };
+  const p=presets[name];
+  $('arrRate').value=p.arr; $('txRate').value=p.tx; $('bufSize').value=p.buf;
+  updLabels();
+}
+
+['arrRate','txRate','bufSize'].forEach(id=>$( id).addEventListener('input',updLabels));
+
+// ── init & loop ───────────────────────────────────────────────
+buildChart();
+drawRouter(getP(),0);
+updLabels();
+
+function loop(ts){
+  if(ts-lastTime>=SIM_STEP_MS){ lastTime=ts; simStep(); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+window.addEventListener('resize',()=>drawRouter(getP(),0));
+</script>
+</body>
+</html>
