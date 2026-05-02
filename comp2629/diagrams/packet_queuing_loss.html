@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Packet Queuing & Loss — Interactive Simulation</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600&display=swap');
+
+  :root {
+    --bg:         #0d1117;
+    --bg2:        #161b22;
+    --bg3:        #1c2330;
+    --border:     rgba(255,255,255,0.08);
+    --text:       #e6edf3;
+    --muted:      #7d8590;
+    --blue:       #388bfd;
+    --green:      #3fb950;
+    --red:        #f85149;
+    --amber:      #d29922;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── header ── */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .header-icon {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--blue), #58a6ff);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  header h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
+  header p  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .badge {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    letter-spacing: 0.5px;
+  }
+
+  /* ── layout ── */
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 28px 24px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* ── card ── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+  }
+  .card-title {
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 14px;
+  }
+  .divider { height: 1px; background: var(--border); margin: 14px 0; }
+
+  /* ── sliders ── */
+  .ctrl-row {
+    display: flex; align-items: center;
+    gap: 12px; margin-bottom: 12px;
+  }
+  .ctrl-row:last-child { margin-bottom: 0; }
+  .ctrl-label {
+    font-size: 12px; color: var(--muted);
+    min-width: 180px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .ctrl-row input[type=range] {
+    flex: 1; -webkit-appearance: none;
+    height: 3px; background: var(--bg3);
+    border-radius: 2px; outline: none; cursor: pointer;
+  }
+  .ctrl-row input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--blue); border: 2px solid var(--bg2);
+    box-shadow: 0 0 0 2px var(--blue);
+    cursor: pointer; transition: transform .1s;
+  }
+  .ctrl-row input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  .ctrl-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; font-weight: 600;
+    color: var(--text); min-width: 78px; text-align: right;
+  }
+  .pkt-badge {
+    display: inline-block; font-size: 10px;
+    padding: 2px 7px; border-radius: 10px;
+    background: rgba(56,139,253,0.15);
+    color: var(--blue); border: 1px solid rgba(56,139,253,0.3);
+    margin-left: 6px; font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── derived info bar ── */
+  .derived-bar {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    font-size: 11px; color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; margin-top: 14px;
+  }
+  .derived-bar span strong { color: var(--text); }
+  .derived-bar .sep { color: var(--border); }
+
+  /* ── stats ── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .stat {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px;
+    position: relative; overflow: hidden;
+  }
+  .stat::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 2px; border-radius: 10px 10px 0 0;
+  }
+  .stat.blue::before  { background: var(--blue); }
+  .stat.amber::before { background: var(--amber); }
+  .stat.red::before   { background: var(--red); }
+  .stat.green::before { background: var(--green); }
+  .stat-lbl { font-size: 10px; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px; font-family: 'JetBrains Mono', monospace; }
+  .stat-num { font-size: 24px; font-weight: 600; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+  .stat-sub { font-size: 10px; color: var(--muted); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+
+  /* ── router canvas ── */
+  #routerCanvas { width: 100%; display: block; border-radius: 8px; }
+
+  /* ── chart ── */
+  .chart-wrap { position: relative; width: 100%; height: 200px; }
+
+  /* ── legend ── */
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 12px; }
+  .leg { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+  .leg-line { width: 20px; height: 3px; border-radius: 2px; }
+  .leg-dashed { width: 20px; height: 0; border-top: 2px dashed; }
+
+  /* ── insight ── */
+  .insight {
+    border-radius: 8px; padding: 12px 14px;
+    font-size: 13px; line-height: 1.6;
+    border: 1px solid var(--border);
+    background: var(--bg3); color: var(--muted);
+    transition: all .3s;
+  }
+  .insight.ok     { border-color: rgba(63,185,80,0.35);  background: rgba(63,185,80,0.06);  color: #7ee787; }
+  .insight.warn   { border-color: rgba(210,153,34,0.35); background: rgba(210,153,34,0.06); color: #e3b341; }
+  .insight.danger { border-color: rgba(248,81,73,0.4);   background: rgba(248,81,73,0.07);  color: #ff7b72; }
+  .insight strong { font-weight: 600; }
+
+  /* ── concepts ── */
+  .concepts {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+  .concept {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px;
+  }
+  .concept-icon  { font-size: 20px; margin-bottom: 6px; }
+  .concept-title { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .concept-desc  { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+  /* ── buttons ── */
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    padding: 7px 16px; border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg3); color: var(--muted);
+    cursor: pointer; letter-spacing: 0.3px; transition: all .15s;
+  }
+  button:hover { border-color: var(--blue); color: var(--blue); background: rgba(56,139,253,0.1); }
+  button.primary { border-color: var(--blue); color: var(--blue); }
+
+  @media (max-width: 640px) {
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .concepts  { grid-template-columns: repeat(2, 1fr); }
+    header { padding: 14px 16px; }
+    main   { padding: 16px 12px 32px; }
+    .ctrl-label { min-width: 120px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-icon">📡</div>
+  <div>
+    <h1>Packet Queuing &amp; Loss</h1>
+    <p>Interactive simulation — Computer Networking</p>
+  </div>
+  <span class="badge">LIVE SIM</span>
+</header>
+
+<main>
+
+  <!-- concept cards -->
+  <div class="concepts">
+    <div class="concept">
+      <div class="concept-icon">📥</div>
+      <div class="concept-title">Arrival Rate</div>
+      <div class="concept-desc">Rate at which packets arrive at the router. When this exceeds link capacity, congestion begins.</div>
+    </div>
+    <div class="concept">
+      <div class="concept-icon">📦</div>
+      <div class="concept-title">Packet Size</div>
+      <div class="concept-desc">Determines packets-per-second at a given bit rate and the serialisation delay per packet on the link.</div>
+    </div>
+    <div class="concept">
+      <div class="concept-icon">🗄️</div>
+      <div class="concept-title">Buffer / Queue</div>
+      <div class="concept-desc">Finite memory in the router. Excess packets wait here. When full, newly arriving packets are dropped.</div>
+    </div>
+    <div class="concept">
+      <div class="concept-icon">🚫</div>
+      <div class="concept-title">Packet Loss</div>
+      <div class="concept-desc">Occurs when the buffer overflows. Lost packets must be retransmitted, degrading performance.</div>
+    </div>
+  </div>
+
+  <!-- controls -->
+  <div class="card">
+    <div class="card-title">Link parameters</div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">arrival_rate</span>
+      <input type="range" id="arrRate" min="1" max="100" value="40" step="1">
+      <span class="ctrl-val"><span id="arr-val">40</span> Mbps</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">transmission_rate</span>
+      <input type="range" id="txRate" min="1" max="100" value="50" step="1">
+      <span class="ctrl-val"><span id="tx-val">50</span> Mbps</span>
+    </div>
+
+    <div class="divider"></div>
+    <div class="card-title" style="margin-bottom:12px;">Buffer &amp; packet parameters</div>
+
+    <div class="ctrl-row">
+      <span class="ctrl-label">buffer_size</span>
+      <input type="range" id="bufSize" min="2" max="50" value="20" step="1">
+      <span class="ctrl-val"><span id="buf-val">20</span> pkts</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">packet_size <span class="pkt-badge" id="pkt-badge">standard MTU</span></span>
+      <input type="range" id="pktSize" min="64" max="9000" value="1500" step="64">
+      <span class="ctrl-val"><span id="pkt-val">1500</span> B</span>
+    </div>
+
+    <!-- derived metrics -->
+    <div class="derived-bar">
+      <span>Buffer capacity: <strong id="buf-bytes">—</strong></span>
+      <span class="sep">·</span>
+      <span>Pkts/s arriving: <strong id="pps-arr">—</strong></span>
+      <span class="sep">·</span>
+      <span>Pkts/s served: <strong id="pps-tx">—</strong></span>
+      <span class="sep">·</span>
+      <span>Serialisation delay: <strong id="ser-delay">—</strong></span>
+    </div>
+  </div>
+
+  <!-- stats -->
+  <div class="stat-grid">
+    <div class="stat blue">
+      <div class="stat-lbl">Buffer Fill</div>
+      <div class="stat-num" id="s-fill">0%</div>
+      <div class="stat-sub" id="s-fill-sub">0 / 0 pkts</div>
+    </div>
+    <div class="stat amber">
+      <div class="stat-lbl">Queue Length</div>
+      <div class="stat-num" id="s-queue">0 p</div>
+      <div class="stat-sub" id="s-queue-sub">0 B queued</div>
+    </div>
+    <div class="stat red">
+      <div class="stat-lbl">Loss Rate (live)</div>
+      <div class="stat-num" id="s-loss">0%</div>
+      <div class="stat-sub" id="s-loss-sub">0 pkts dropped</div>
+    </div>
+    <div class="stat green">
+      <div class="stat-lbl">Throughput</div>
+      <div class="stat-num" id="s-tput">—</div>
+      <div class="stat-sub">effective</div>
+    </div>
+  </div>
+
+  <!-- router diagram -->
+  <div class="card" style="padding:16px 20px;">
+    <div class="card-title">Router diagram</div>
+    <canvas id="routerCanvas"></canvas>
+  </div>
+
+  <!-- chart -->
+  <div class="card">
+    <div class="card-title">Live chart</div>
+    <div class="legend">
+      <span class="leg"><span class="leg-line"   style="background:#388bfd"></span>Arrival (Mbps)</span>
+      <span class="leg"><span class="leg-dashed" style="border-color:#3fb950"></span>Transmission (Mbps)</span>
+      <span class="leg"><span class="leg-line"   style="background:#d29922"></span>Queue (pkts)</span>
+      <span class="leg"><span class="leg-dashed" style="border-color:#f85149"></span>Loss rate (%)</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartCanvas"></canvas>
+    </div>
+  </div>
+
+  <!-- insight -->
+  <div class="insight" id="insight-box">
+    Adjust the sliders above to observe queuing and packet loss behaviour in real time.
+  </div>
+
+  <!-- buttons -->
+  <div class="btn-row">
+    <button class="primary" onclick="resetSim()">⟳ Reset simulation</button>
+    <button onclick="setPreset('calm')">No congestion</button>
+    <button onclick="setPreset('edge')">At capacity</button>
+    <button onclick="setPreset('overload')">Overloaded</button>
+    <button onclick="setPreset('smallpkt')">Small pkts (64 B)</button>
+    <button onclick="setPreset('jumbo')">Jumbo frames (9 KB)</button>
+  </div>
+
+</main>
+
+<script>
+// ── colours ──────────────────────────────────────────────────
+const BLUE='#388bfd', GREEN='#3fb950', RED='#f85149', AMBER='#d29922';
+const BG3='#1c2330', BORDER='rgba(255,255,255,0.08)', MUTED='#7d8590', TEXT='#e6edf3';
+const bgSec='#161b22';
+
+// ── state ─────────────────────────────────────────────────────
+let simQueue=0, tick=0, lastTime=0;
+const SIM_MS=800, MAX_HIST=30;
+let hist={arr:[],tx:[],queue:[],loss:[],labels:[]};
+
+const $=id=>document.getElementById(id);
+
+function getP(){
+  return {
+    arr: +$('arrRate').value,
+    tx:  +$('txRate').value,
+    buf: +$('bufSize').value,
+    pkt: +$('pktSize').value,
+  };
+}
+
+function fmtBytes(b){
+  if(b>=1e6) return (b/1e6).toFixed(1)+' MB';
+  if(b>=1e3) return (b/1e3).toFixed(1)+' KB';
+  return b+' B';
+}
+function fmtRate(mbps){
+  return mbps>=1000?(mbps/1000).toFixed(1)+' Gbps':mbps+' Mbps';
+}
+
+function calcDerived(p){
+  const pktBits = p.pkt * 8;
+  const ppsArr  = Math.round(p.arr * 1e6 / pktBits);
+  const ppsTx   = Math.round(p.tx  * 1e6 / pktBits);
+  const bufBytes= p.buf * p.pkt;
+  const serMs   = (pktBits / (p.tx * 1e6) * 1000).toFixed(2);
+  return { ppsArr, ppsTx, bufBytes, serMs };
+}
+
+function updateLabels(){
+  const p=getP();
+  $('arr-val').textContent = p.arr;
+  $('tx-val').textContent  = p.tx;
+  $('buf-val').textContent = p.buf;
+  $('pkt-val').textContent = p.pkt;
+
+  const d=calcDerived(p);
+  $('buf-bytes').textContent = fmtBytes(d.bufBytes);
+  $('pps-arr').textContent   = d.ppsArr.toLocaleString()+' pps';
+  $('pps-tx').textContent    = d.ppsTx.toLocaleString()+' pps';
+  $('ser-delay').textContent = d.serMs+' ms';
+
+  const badge=$('pkt-badge');
+  if     (p.pkt<=128)  badge.textContent='tiny';
+  else if(p.pkt<=512)  badge.textContent='small';
+  else if(p.pkt<=1500) badge.textContent='standard MTU';
+  else if(p.pkt<=4096) badge.textContent='large';
+  else                 badge.textContent='jumbo frame';
+}
+
+// ── simulation ────────────────────────────────────────────────
+function simStep(){
+  const p=getP(), d=calcDerived(p);
+  const tickSec=SIM_MS/1000;
+  const arrPkts=Math.round(d.ppsArr*tickSec);
+  const txPkts =Math.round(d.ppsTx *tickSec);
+
+  simQueue+=arrPkts;
+  let dropped=0;
+  if(simQueue>p.buf){ dropped=simQueue-p.buf; simQueue=p.buf; }
+  simQueue=Math.max(0, simQueue-Math.min(txPkts,simQueue));
+
+  const lossNow=arrPkts>0?Math.round(dropped/arrPkts*100):0;
+
+  tick++;
+  hist.arr.push(p.arr); hist.tx.push(p.tx);
+  hist.queue.push(simQueue); hist.loss.push(lossNow);
+  hist.labels.push('t'+tick);
+  if(hist.arr.length>MAX_HIST){
+    ['arr','tx','queue','loss','labels'].forEach(k=>hist[k].shift());
+  }
+
+  updateStats(p,d,dropped,lossNow,arrPkts);
+  updateChart(p);
+  drawRouter(p,dropped,d);
+}
+
+function updateStats(p,d,dropped,lossNow){
+  const fillPct=Math.round(simQueue/p.buf*100);
+  const qBytes=simQueue*p.pkt;
+  const tput=Math.min(p.arr,p.tx);
+  const pktLabel=p.pkt>=1024?(p.pkt/1024).toFixed(1)+'KB':p.pkt+'B';
+
+  const fillEl=$('s-fill');
+  fillEl.textContent=fillPct+'%';
+  fillEl.style.color=fillPct>=100?RED:fillPct>60?AMBER:GREEN;
+  $('s-fill-sub').textContent=simQueue+' / '+p.buf+' pkts';
+
+  $('s-queue').textContent=simQueue+' p';
+  $('s-queue-sub').textContent=fmtBytes(qBytes)+' queued';
+
+  const lossEl=$('s-loss');
+  lossEl.textContent=lossNow+'%';
+  lossEl.style.color=lossNow>0?RED:GREEN;
+  $('s-loss-sub').textContent=dropped+' pkt'+(dropped!==1?'s':'')+' dropped';
+
+  $('s-tput').textContent=fmtRate(tput);
+
+  const ib=$('insight-box');
+  if(p.arr<p.tx){
+    ib.className='insight ok';
+    ib.innerHTML='<strong>✓ No congestion:</strong> Arrival ('+p.arr+' Mbps → '+d.ppsArr.toLocaleString()+' pps @ '+pktLabel+') &lt; link ('+p.tx+' Mbps). Queue stays empty — 0% loss.';
+  } else if(p.arr===p.tx){
+    ib.className='insight warn';
+    ib.innerHTML='<strong>⚠ At capacity:</strong> Arrival equals transmission rate. Serialisation delay is '+d.serMs+' ms per '+pktLabel+' packet. Small bursts may queue.';
+  } else if(simQueue<p.buf){
+    ib.className='insight warn';
+    ib.innerHTML='<strong>⚠ Queuing:</strong> '+d.ppsArr.toLocaleString()+' pps arriving, only '+d.ppsTx.toLocaleString()+' pps served ('+pktLabel+'/pkt). Buffer: '+simQueue+'/'+p.buf+' pkts ('+fmtBytes(qBytes)+'). Loss begins when buffer fills.';
+  } else {
+    ib.className='insight danger';
+    ib.innerHTML='<strong>✕ Buffer full — packet loss!</strong> '+dropped+' pkt'+(dropped!==1?'s':'')+' dropped this tick. At '+pktLabel+'/pkt, the '+p.buf+'-slot buffer holds only '+fmtBytes(p.buf*p.pkt)+'. Loss rate: '+lossNow+'%.';
+  }
+}
+
+// ── chart ─────────────────────────────────────────────────────
+let chart;
+function buildChart(){
+  const ctx=$('chartCanvas').getContext('2d');
+  chart=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:[],
+      datasets:[
+        {label:'Arrival (Mbps)',     data:[],borderColor:BLUE, backgroundColor:'rgba(56,139,253,0.12)',borderWidth:2,pointRadius:0,fill:true, tension:0.3,yAxisID:'y'},
+        {label:'Transmission (Mbps)',data:[],borderColor:GREEN,backgroundColor:'rgba(63,185,80,0.10)', borderWidth:2,pointRadius:0,fill:true, tension:0.3,borderDash:[4,3],yAxisID:'y'},
+        {label:'Queue (pkts)',       data:[],borderColor:AMBER,backgroundColor:'transparent',          borderWidth:2,pointRadius:0,fill:false,tension:0.3,yAxisID:'y2'},
+        {label:'Loss rate %',        data:[],borderColor:RED,  backgroundColor:'transparent',          borderWidth:2,pointRadius:0,fill:false,tension:0.3,borderDash:[3,2],yAxisID:'y3'},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          mode:'index', intersect:false,
+          backgroundColor:'rgba(22,27,34,0.95)',
+          borderColor:BORDER, borderWidth:1,
+          titleColor:TEXT, bodyColor:MUTED,
+          callbacks:{label:c=>c.dataset.label+': '+Math.round(c.parsed.y)}
+        }
+      },
+      scales:{
+        x: {ticks:{color:MUTED,font:{size:10,family:'JetBrains Mono'},maxTicksLimit:8},grid:{color:BORDER}},
+        y: {min:0,max:110,ticks:{color:MUTED,font:{size:10,family:'JetBrains Mono'},callback:v=>v+'M'},grid:{color:BORDER},
+            title:{display:true,text:'Rate (Mbps)',color:MUTED,font:{size:10}}},
+        y2:{position:'right',min:0,ticks:{color:AMBER,font:{size:10,family:'JetBrains Mono'},callback:v=>v+'p'},grid:{display:false}},
+        y3:{position:'right',min:0,max:100,display:false},
+      }
+    }
+  });
+}
+
+function updateChart(p){
+  if(!chart)return;
+  chart.data.labels=hist.labels;
+  chart.data.datasets[0].data=hist.arr;
+  chart.data.datasets[1].data=hist.tx;
+  chart.data.datasets[2].data=hist.queue;
+  chart.data.datasets[3].data=hist.loss;
+  chart.options.scales.y.max=Math.max(p.arr,p.tx)+10;
+  chart.options.scales.y2.max=Math.max(p.buf+2,12);
+  chart.update('none');
+}
+
+// ── router diagram ────────────────────────────────────────────
+function drawRouter(p, dropped, d){
+  const canvas=$('routerCanvas');
+  const dpr=window.devicePixelRatio||1;
+  const W=canvas.offsetWidth||840, H=175;
+  if(canvas.width!==Math.round(W*dpr)){
+    canvas.width=Math.round(W*dpr);
+    canvas.height=Math.round(H*dpr);
+    canvas.style.height=H+'px';
+  }
+  const ctx=canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const fp=simQueue/p.buf;
+  const rX=W*0.35, rY=26, rW=W*0.3, rH=108;
+  const bPad=8, bX=rX+bPad, bY=rY+bPad, bW=rW-bPad*2, bH=rH-bPad*2;
+
+  // router box
+  ctx.fillStyle=BG3; ctx.strokeStyle=BORDER; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.roundRect(rX,rY,rW,rH,10); ctx.fill(); ctx.stroke();
+
+  // buffer fill colour
+  const fc=fp>=1?RED:fp>0.7?AMBER:GREEN;
+  const fH=bH*Math.min(fp,1);
+  if(fH>0){
+    ctx.fillStyle=fc+'28'; ctx.fillRect(bX,bY+bH-fH,bW,fH);
+    ctx.strokeStyle=fc; ctx.lineWidth=0.5; ctx.strokeRect(bX,bY+bH-fH,bW,fH);
+  }
+  ctx.strokeStyle=BORDER; ctx.lineWidth=1; ctx.strokeRect(bX,bY,bW,bH);
+
+  // slot dividers
+  const maxSlots=Math.min(p.buf,30);
+  const slotH=bH/maxSlots;
+  ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=0.5;
+  for(let i=1;i<maxSlots;i++){
+    const sy=bY+i*slotH;
+    ctx.beginPath(); ctx.moveTo(bX,sy); ctx.lineTo(bX+bW,sy); ctx.stroke();
+  }
+
+  // labels
+  ctx.fillStyle=TEXT; ctx.font='500 12px DM Sans, sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Router Buffer',rX+rW/2,rY-10);
+  ctx.font='10px JetBrains Mono, monospace'; ctx.fillStyle=fp>=1?RED:MUTED;
+  ctx.fillText(simQueue+'/'+p.buf+' pkts  ·  '+fmtBytes(simQueue*p.pkt),rX+rW/2,rY+rH+15);
+
+  // packet size watermark inside buffer
+  const pktLbl=p.pkt>=1024?(p.pkt/1024).toFixed(1)+'KB':p.pkt+'B';
+  ctx.font='10px JetBrains Mono, monospace';
+  ctx.fillStyle='rgba(255,255,255,0.18)'; ctx.textAlign='center';
+  ctx.fillText(pktLbl+'/pkt',rX+rW/2,bY+bH/2+4);
+
+  // buffer capacity dashed line
+  ctx.strokeStyle=AMBER; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(bX-6,bY); ctx.lineTo(bX+bW+6,bY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=AMBER; ctx.font='10px JetBrains Mono, monospace'; ctx.textAlign='right';
+  ctx.fillText('buffer limit',bX+bW+4,bY-4);
+
+  const aY=rY+rH/2;
+  const arrCol=p.arr>p.tx?RED:BLUE;
+
+  // arrival arrow
+  ctx.strokeStyle=arrCol; ctx.lineWidth=2.5; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(36,aY); ctx.lineTo(rX-4,aY); ctx.stroke();
+  ctx.fillStyle=arrCol;
+  ctx.beginPath(); ctx.moveTo(rX-2,aY); ctx.lineTo(rX-11,aY-5); ctx.lineTo(rX-11,aY+5); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=TEXT; ctx.font='12px DM Sans, sans-serif'; ctx.textAlign='center';
+  ctx.fillText(p.arr+' Mbps',(36+rX)/2,aY-9);
+  ctx.fillStyle=arrCol; ctx.font='10px JetBrains Mono, monospace';
+  ctx.fillText(d.ppsArr.toLocaleString()+' pps',(36+rX)/2,aY+17);
+
+  // dropped indicator
+  if(dropped>0){
+    ctx.strokeStyle=RED; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(56,aY-28); ctx.lineTo(rX-14,aY-28); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=RED; ctx.font='500 11px DM Sans, sans-serif'; ctx.textAlign='center';
+    const mx=(56+rX-14)/2;
+    ctx.fillText('▼ '+dropped+' pkt'+(dropped>1?'s':'')+' dropped',mx,aY-35);
+  }
+
+  // transmission arrow
+  ctx.strokeStyle=GREEN; ctx.lineWidth=2.5; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(rX+rW+4,aY); ctx.lineTo(W-36,aY); ctx.stroke();
+  ctx.fillStyle=GREEN;
+  ctx.beginPath(); ctx.moveTo(W-36,aY); ctx.lineTo(W-46,aY-5); ctx.lineTo(W-46,aY+5); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=TEXT; ctx.font='12px DM Sans, sans-serif'; ctx.textAlign='center';
+  ctx.fillText(p.tx+' Mbps',(rX+rW+W-36)/2,aY-9);
+  ctx.fillStyle=GREEN; ctx.font='10px JetBrains Mono, monospace';
+  ctx.fillText(d.ppsTx.toLocaleString()+' pps',(rX+rW+W-36)/2,aY+17);
+}
+
+// ── presets & reset ───────────────────────────────────────────
+function setPreset(name){
+  const presets={
+    calm:    {arr:30, tx:50, buf:20, pkt:1500},
+    edge:    {arr:50, tx:50, buf:20, pkt:1500},
+    overload:{arr:80, tx:30, buf:10, pkt:1500},
+    smallpkt:{arr:40, tx:50, buf:20, pkt:64},
+    jumbo:   {arr:40, tx:50, buf:20, pkt:9000},
+  };
+  const p=presets[name];
+  $('arrRate').value=p.arr; $('txRate').value=p.tx;
+  $('bufSize').value=p.buf; $('pktSize').value=p.pkt;
+  updateLabels();
+}
+
+function resetSim(){
+  simQueue=0; tick=0;
+  hist={arr:[],tx:[],queue:[],loss:[],labels:[]};
+  updateLabels();
+  const p=getP();
+  $('s-fill').textContent='0%'; $('s-fill').style.color=GREEN; $('s-fill-sub').textContent='0 / '+p.buf+' pkts';
+  $('s-queue').textContent='0 p'; $('s-queue-sub').textContent='0 B queued';
+  $('s-loss').textContent='0%';  $('s-loss').style.color=GREEN; $('s-loss-sub').textContent='0 pkts dropped';
+  $('s-tput').textContent='—';
+  $('insight-box').className='insight';
+  $('insight-box').innerHTML='Simulation reset. Adjust the sliders and observe what happens.';
+  if(chart){chart.data.labels=[];chart.data.datasets.forEach(d=>d.data=[]);chart.update('none');}
+  drawRouter(p,0,calcDerived(p));
+}
+
+function calcDerived(p){
+  const pktBits=p.pkt*8;
+  return {
+    ppsArr: Math.round(p.arr*1e6/pktBits),
+    ppsTx:  Math.round(p.tx *1e6/pktBits),
+    bufBytes: p.buf*p.pkt,
+    serMs: (pktBits/(p.tx*1e6)*1000).toFixed(2),
+  };
+}
+
+// ── init ──────────────────────────────────────────────────────
+['arrRate','txRate','bufSize','pktSize'].forEach(id=>$(id).addEventListener('input',updateLabels));
+buildChart();
+updateLabels();
+drawRouter(getP(),0,calcDerived(getP()));
+
+function loop(ts){
+  if(ts-lastTime>=SIM_MS){ lastTime=ts; simStep(); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+window.addEventListener('resize',()=>drawRouter(getP(),0,calcDerived(getP())));
+</script>
+</body>
+</html>
