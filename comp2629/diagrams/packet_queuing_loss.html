@@ -221,7 +221,7 @@ button.primary{border-color:var(--blue);color:var(--blue);}
   <div class="card-title">Buffer &amp; packet parameters</div>
   <div class="ctrl">
     <span class="ctrl-lbl">buffer_size</span>
-    <input type="range" id="bufSize" min="50" max="2000" value="500" step="50">
+    <input type="range" id="bufSize" min="200" max="2000" value="500" step="50">
     <span class="ctrl-val"><span id="buf-val">500</span> KB</span>
   </div>
   <div class="ctrl">
@@ -324,7 +324,7 @@ button.primary{border-color:var(--blue);color:var(--blue);}
   <span class="ok">✓</span> Tick = 10 ms &nbsp;<span class="fix">← v3 bug fixed: 800 ms tick dumped 3.9 MB/tick into 500 KB buffer → false loss</span><br>
   <span class="ok">✓</span> Arrival bytes/tick = arr_Mbps × 1e6/8 × 0.01 s (fractional accumulator, no rounding drift)<br>
   <span class="ok">✓</span> Transmission bytes/tick = tx_Mbps × 1e6/8 × 0.01 s (same accumulator method)<br>
-  <span class="ok">✓</span> Buffer in bytes = bufKB × 1024 · all internal ops in bytes<br>
+  <span class="ok">✓</span> Buffer min = 200 KB — ensures arrPerTick (max 125 KB @ 100 Mbps / 10 ms) always &lt; buffer<br>
   <span class="ok">✓</span> Serialisation delay = pkt_bytes × 8 / tx_bps [ms]<br>
   <span class="ok">✓</span> Queuing delay = queue_bytes × 8 / tx_bps [ms] &nbsp;<span class="fix">← bug in v2 fixed (was ÷8 too small)</span><br>
   <span class="ok">✓</span> Max queue delay = buf_bytes × 8 / tx_bps [ms]<br>
@@ -344,6 +344,7 @@ const BLUE='#388bfd',GREEN='#3fb950',RED='#f85149',AMBER='#d29922',PURPLE='#8b7e
 const BG3='#1c2330',BORDER='rgba(255,255,255,0.08)',MUTED='#7d8590',TEXT='#e6edf3';
 const bgSec='#161b22';
 const SIM_MS=10, MAX_HIST=300; // 10ms tick — prevents buffer-larger-than-tick overflow bug
+const TICK_SEC = SIM_MS / 1000; // 0.01 s — module-level for use in updateStats
 
 let queueBytes=0, arrAcc=0, txAcc=0, tick=0, lastTime=0;
 let chartMode='rates';
@@ -553,34 +554,45 @@ function updateStats(p,d,fillPct,droppedBytes,lossNow,qDelayMs,totLatMs,tputMbps
 
   // Insight
   const ib=$('insight');
-  if(fillPct>=99 && lossNow>0){
+  if(p.arr < p.tx){
+    // Queue drains every tick — delay is always 0 here. Correct physics.
+    ib.className='insight ok';
+    ib.innerHTML='<strong>✓ No congestion:</strong> Arrival ('+fmtMbps(p.arr)+') &lt; link ('+
+      fmtMbps(p.tx)+'). The link drains '+fmtB(Math.round((p.tx-p.arr)*1e6/8*TICK_SEC))+
+      ' more than arrives each tick → queue stays empty → <strong>queuing delay = 0</strong>. '+
+      'Total latency is just serialisation: '+fmtMs(d.serMs)+'.';
+  } else if(p.arr === p.tx){
+    ib.className='insight warn';
+    ib.innerHTML='<strong>⚠ At capacity:</strong> Arrival = transmission rate. '+
+      'In theory queue stays at 0 (delay = 0), but real traffic bursts would cause '+
+      'brief queuing. Serialisation delay: '+fmtMs(d.serMs)+' per '+pktLbl+'.';
+  } else if(fillPct >= 99 && lossNow > 0){
+    // Buffer full — both loss AND high latency
     ib.className='insight danger';
     ib.innerHTML='<strong>✕ Buffer full — loss + high latency!</strong> '+fmtB(droppedBytes)+
-      ' dropped this tick ('+lossNow.toFixed(0)+'% loss). Surviving packets face '+
-      fmtMs(qDelayMs)+' queuing + '+fmtMs(d.serMs)+' serialisation = <strong>'+fmtMs(totLatMs)+
-      ' total delay</strong>. This is the bufferbloat zone: even delivered packets arrive very late.';
-  } else if(qDelayMs>20 && lossNow===0){
+      ' dropped this tick ('+lossNow.toFixed(0)+'% loss). Surviving packets wait '+
+      fmtMs(qDelayMs)+' in queue + '+fmtMs(d.serMs)+' serialisation = <strong>'+
+      fmtMs(totLatMs)+' total</strong>. '+
+      'This is <em>bufferbloat</em>: a larger buffer would lower loss rate but push '+
+      'latency even higher before packets start dropping.';
+  } else if(p.arr > p.tx && qDelayMs > 20){
+    // Queue building fast — high latency, loss coming soon
     ib.className='insight warn';
-    ib.innerHTML='<strong>⚠ Bufferbloat risk:</strong> No packet loss yet, but '+fmtB(queueBytes)+
-      ' is queued. Queuing delay is <strong>'+fmtMs(qDelayMs)+'</strong> — total latency '+
-      fmtMs(totLatMs)+'. A larger buffer delays loss but <em>amplifies latency</em>. '+
-      'Try the "Bufferbloat demo" preset.';
-  } else if(p.arr>p.tx){
+    ib.innerHTML='<strong>⚠ Queue growing — latency rising:</strong> Arrival ('+fmtMbps(p.arr)+
+      ') &gt; link ('+fmtMbps(p.tx)+'). Net overflow: '+
+      fmtB(Math.round((p.arr-p.tx)*1e6/8*TICK_SEC))+'/tick. '+
+      'Buffer: '+fmtB(queueBytes)+'/'+fmtB(p.buf)+' ('+fillPct.toFixed(0)+'%). '+
+      'Queuing delay now <strong>'+fmtMs(qDelayMs)+'</strong>. '+
+      'Packet loss begins when buffer fills completely.';
+  } else if(p.arr > p.tx){
+    // Queue just starting to build
     ib.className='insight warn';
-    ib.innerHTML='<strong>⚠ Queuing:</strong> Arrival ('+fmtMbps(p.arr)+') &gt; link ('+
-      fmtMbps(p.tx)+'). Buffer filling: '+fmtB(queueBytes)+'/'+fmtB(p.buf)+
-      '. Queuing delay: '+fmtMs(qDelayMs)+'. Loss begins when buffer is full.';
-  } else if(p.arr===p.tx){
-    ib.className='insight warn';
-    ib.innerHTML='<strong>⚠ At capacity:</strong> Arrival equals transmission rate. '+
-      'Serialisation delay: '+fmtMs(d.serMs)+' per '+pktLbl+' packet. '+
-      'Bursts may cause brief queuing.';
-  } else {
-    ib.className='insight ok';
-    ib.innerHTML='<strong>✓ No congestion:</strong> Arrival ('+fmtMbps(p.arr)+' → '+
-      fmtPps(d.ppsArr)+' @ '+pktLbl+') &lt; link ('+fmtMbps(p.tx)+'). '+
-      'Queue: '+fmtB(queueBytes)+'. Queuing delay: '+fmtMs(qDelayMs)+
-      '. Total latency: '+fmtMs(totLatMs)+'.';
+    ib.innerHTML='<strong>⚠ Queuing starting:</strong> Arrival ('+fmtMbps(p.arr)+
+      ') &gt; link ('+fmtMbps(p.tx)+'). Queue fills at '+
+      fmtB(Math.round((p.arr-p.tx)*1e6/8*TICK_SEC))+'/tick. '+
+      'Buffer: '+fmtB(queueBytes)+'/'+fmtB(p.buf)+
+      '. <strong>Queuing delay grows as buffer fills.</strong> '+
+      'Loss begins when buffer is full.';
   }
 }
 
@@ -849,11 +861,12 @@ function setPreset(name){
   const P={
     calm:    {arr:30, tx:50, buf:500,  pkt:1500},
     edge:    {arr:50, tx:50, buf:500,  pkt:1500},
-    overload:{arr:80, tx:30, buf:300,  pkt:1500},
+    overload:{arr:80, tx:30, buf:200,  pkt:1500},
     smallpkt:{arr:40, tx:50, buf:500,  pkt:64},
     jumbo:   {arr:40, tx:50, buf:500,  pkt:9000},
-    // Bufferbloat: arr just under tx so NO loss, but HUGE buffer → high latency
-    bloat:   {arr:48, tx:50, buf:2000, pkt:1500},
+    // Bufferbloat: arr slightly ABOVE tx → queue fills slowly with large buffer
+    // → latency climbs high before loss hits. Shows latency vs loss tradeoff.
+    bloat:   {arr:55, tx:50, buf:2000, pkt:1500},
   };
   const pr=P[name];
   $('arrRate').value=pr.arr; $('txRate').value=pr.tx;
