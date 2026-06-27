@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCP sequence numbers & ACKs — interactive</title>
+<style>
+  :root{
+    --ink:#0a1f44;
+    --paper:#f3f0e7;
+    --card:#ffffff;
+    --line:#d8d3c4;
+    --line-strong:#b9b3a1;
+    --muted:#6b6757;
+    --accent:#2f54c9;     /* host A / blue wire */
+    --accent-soft:#e7ecfb;
+    --hostb:#1d7d54;      /* host B / green */
+    --hostb-soft:#e2f1e9;
+    --amber:#d9851a;
+    --amber-soft:#fbeed8;
+    --red:#c0392b;
+    --gray:#a9a496;
+    --gray-soft:#ece9df;
+    --green:#5a8a16;
+    --green-soft:#eaf2da;
+    --focus:#2f54c9;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    line-height:1.6;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:48px 24px 80px;}
+  .eyebrow{
+    font-family:"SF Mono",ui-monospace,"Cascadia Code",Menlo,monospace;
+    font-size:12px;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--accent);margin:0 0 10px;font-weight:600;
+  }
+  h1{
+    font-size:clamp(34px,6vw,58px);line-height:1.02;margin:0 0 14px;
+    font-weight:600;letter-spacing:-.02em;
+  }
+  .lede{font-size:19px;color:var(--muted);max-width:60ch;margin:0 0 8px;}
+  .rule{height:2px;background:var(--ink);margin:32px 0;opacity:.85;}
+
+  section{margin:56px 0 0;}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin:0 0 6px;}
+  .sec-num{
+    font-family:"SF Mono",ui-monospace,Menlo,monospace;
+    font-size:13px;color:var(--accent);font-weight:600;padding-top:6px;
+  }
+  h2{font-size:30px;line-height:1.1;margin:0;font-weight:600;letter-spacing:-.01em;}
+  .sec-sub{font-size:17px;color:var(--muted);margin:8px 0 24px;max-width:62ch;}
+
+  .panel{
+    background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:24px;
+  }
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px;}
+  button{
+    font-family:inherit;font-size:15px;color:var(--ink);
+    background:var(--card);border:1px solid var(--line-strong);
+    border-radius:10px;padding:9px 15px;cursor:pointer;
+    transition:background .15s,transform .05s,border-color .15s;
+    display:inline-flex;align-items:center;gap:7px;
+  }
+  button:hover{background:var(--paper);border-color:var(--ink);}
+  button:active{transform:scale(.97);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  button.primary:hover{background:#2543a8;}
+  button:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+  input[type=checkbox]{accent-color:var(--red);width:16px;height:16px;}
+  input[type=range]{accent-color:var(--accent);}
+  .chk{display:flex;align-items:center;gap:7px;font-size:14px;color:var(--muted);cursor:pointer;}
+
+  /* ---- timeline ---- */
+  .tl-stage{position:relative;min-height:430px;margin-top:6px;}
+  .host{
+    position:absolute;top:0;text-align:center;width:140px;
+    transform:translateX(-50%);
+  }
+  .host .icon{
+    width:54px;height:54px;border-radius:12px;margin:0 auto 6px;
+    display:flex;align-items:center;justify-content:center;font-size:26px;
+    border:1px solid var(--line);
+  }
+  .hostA .icon{background:var(--accent-soft);color:var(--accent);}
+  .hostB .icon{background:var(--hostb-soft);color:var(--hostb);}
+  .host .name{font-weight:600;font-size:16px;}
+  .lifeline{position:absolute;top:70px;bottom:0;width:2px;background:var(--line-strong);}
+  svg.wires{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;}
+  .note{
+    position:absolute;font-size:14.5px;max-width:190px;color:var(--ink);
+    background:var(--paper);padding:4px 8px;border-radius:8px;
+  }
+  .note.a{text-align:right;}
+  .note.b{text-align:left;}
+  .seglabel{
+    position:absolute;font-family:"SF Mono",ui-monospace,Menlo,monospace;
+    font-size:13px;background:var(--card);border:1px solid var(--line);
+    padding:3px 8px;border-radius:7px;white-space:nowrap;
+    transform:translate(-50%,-50%);
+  }
+  .seglabel b{color:var(--accent);}
+  .seglabel .ack{color:var(--hostb);}
+  .reveal{opacity:0;transition:opacity .5s ease;}
+  .reveal.on{opacity:1;}
+  .tl-caption{
+    margin-top:18px;padding:14px 16px;background:var(--accent-soft);
+    border-radius:12px;font-size:15.5px;color:var(--ink);min-height:34px;
+  }
+
+  /* ---- window sim ---- */
+  .track{display:flex;gap:3px;overflow-x:auto;padding:4px 0 8px;}
+  .cell{
+    flex:0 0 auto;width:46px;height:52px;border-radius:7px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:11px;
+    transition:background .25s,outline .2s;
+  }
+  .cell .seq{font-weight:600;}
+  .cell .id{opacity:.7;font-size:10px;}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;font-size:13px;color:var(--muted);}
+  .legend span{display:flex;align-items:center;gap:6px;}
+  .sw{width:13px;height:13px;border-radius:4px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
+  .seg-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:13px 15px;}
+  .seg-card h4{margin:0 0 9px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;}
+  .row{display:flex;justify-content:space-between;font-size:14px;padding:3px 0;color:var(--muted);}
+  .row b{font-family:"SF Mono",ui-monospace,Menlo,monospace;color:var(--ink);font-weight:500;}
+  .winrow{display:flex;align-items:center;gap:10px;margin:16px 0 4px;font-size:14px;color:var(--muted);}
+  .winrow input{flex:1;max-width:220px;}
+  .simlog{margin-top:16px;padding:14px 16px;background:var(--gray-soft);border-radius:12px;font-size:15px;min-height:46px;}
+  .simlog b{color:var(--ink);}
+
+  .footer{margin-top:60px;font-size:14px;color:var(--muted);text-align:center;}
+  @media(max-width:640px){
+    .grid2{grid-template-columns:1fr;}
+    .note{max-width:120px;font-size:12.5px;}
+    .host{width:96px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">Transport layer · TCP</p>
+  <h1>Sequence numbers &amp; ACKs</h1>
+  <p class="lede">Two ways to feel how TCP labels every byte and confirms what arrived. Drive the sliding window yourself, then watch the telnet echo exchange play out.</p>
+
+  <div class="rule"></div>
+
+  <!-- ============ PART 1: SLIDING WINDOW ============ -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">01</span>
+      <h2>The sliding window</h2>
+    </div>
+    <p class="sec-sub">A bigger byte stream, ten 50-byte segments. The seq number of each segment is the offset of its first byte. Send, ACK, and try dropping a segment to see out-of-order delivery and cumulative ACKs.</p>
+
+    <div class="panel">
+      <div class="controls">
+        <button class="primary" id="btnSend">Send next segment</button>
+        <button id="btnAck">Deliver next ACK</button>
+        <button id="btnReset">Reset</button>
+        <label class="chk"><input type="checkbox" id="dropNext"> drop next segment in transit</label>
+      </div>
+
+      <div class="winrow">
+        <span>Window N</span>
+        <input type="range" id="win" min="2" max="6" value="4" step="1">
+        <b id="winOut" style="color:var(--ink);font-family:'SF Mono',Menlo,monospace;">4 segments</b>
+      </div>
+
+      <div class="track" id="track"></div>
+
+      <div class="legend">
+        <span><span class="sw" style="background:#5a8a16;"></span>sent, ACKed</span>
+        <span><span class="sw" style="background:#d9851a;"></span>sent, in-flight</span>
+        <span><span class="sw" style="background:#2f54c9;"></span>usable, not sent</span>
+        <span><span class="sw" style="background:#a9a496;"></span>not usable</span>
+        <span><span class="sw" style="background:transparent;border:2px dashed #7d4ab7;"></span>buffered (out of order)</span>
+      </div>
+
+      <div class="grid2">
+        <div class="seg-card">
+          <h4 style="color:var(--accent);">↑ Sender segment</h4>
+          <div class="row"><span>seq number</span><b id="sSeq">—</b></div>
+          <div class="row"><span>data bytes</span><b id="sLen">—</b></div>
+        </div>
+        <div class="seg-card">
+          <h4 style="color:var(--hostb);">↓ Receiver ACK</h4>
+          <div class="row"><span>ack number</span><b id="rAck">0 (want S1)</b></div>
+          <div class="row"><span>buffered</span><b id="rBuf">none</b></div>
+        </div>
+      </div>
+
+      <div class="simlog" id="simlog"></div>
+    </div>
+  </section>
+
+  <!-- ============ PART 2: TELNET ECHO ============ -->
+  <section>
+    <div class="sec-head">
+      <span class="sec-num">02</span>
+      <h2>One keystroke, three segments</h2>
+    </div>
+    <p class="sec-sub">You type a single character in a telnet session. Watch how seq and ack numbers reference each other as the byte travels to Host B and the echo comes back.</p>
+
+    <div class="panel">
+      <div class="controls">
+        <button class="primary" id="tlStep"><span id="tlStepLabel">Type 'C'</span></button>
+        <button id="tlReset">Reset</button>
+      </div>
+
+      <div class="tl-stage" id="stage">
+        <div class="host hostA" style="left:28%;"><div class="icon">🖥️</div><div class="name">Host A</div></div>
+        <div class="host hostB" style="left:78%;"><div class="icon">🖥️</div><div class="name">Host B</div></div>
+        <div class="lifeline" style="left:28%;"></div>
+        <div class="lifeline" style="left:78%;"></div>
+
+        <svg class="wires" viewBox="0 0 920 430" preserveAspectRatio="none">
+          <defs>
+            <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+              <path d="M0,0 L9,4.5 L0,9 Z" fill="#2f54c9"/>
+            </marker>
+            <marker id="ahg" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+              <path d="M0,0 L9,4.5 L0,9 Z" fill="#1d7d54"/>
+            </marker>
+            <marker id="ahr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+              <path d="M0,0 L9,4.5 L0,9 Z" fill="#c0392b"/>
+            </marker>
+          </defs>
+          <!-- A->B  data C -->
+          <line id="w1" class="reveal" x1="258" y1="120" x2="718" y2="190" stroke="#2f54c9" stroke-width="2.5" marker-end="url(#ah)"/>
+          <!-- B->A  echo C -->
+          <line id="w2" class="reveal" x1="718" y1="230" x2="258" y2="300" stroke="#1d7d54" stroke-width="2.5" marker-end="url(#ahg)"/>
+          <!-- A->B  ack 80 -->
+          <line id="w3" class="reveal" x1="258" y1="340" x2="718" y2="408" stroke="#2f54c9" stroke-width="2.5" marker-end="url(#ah)"/>
+          <!-- red link seq79<-ack80 -->
+          <line id="wr" class="reveal" x1="600" y1="392" x2="468" y2="262" stroke="#c0392b" stroke-width="1.6" marker-end="url(#ahr)"/>
+        </svg>
+
+        <div class="note a reveal" id="n1" style="left:5%;top:96px;">User types 'C'</div>
+        <div class="seglabel reveal" id="s1" style="left:50%;top:150px;"><b>Seq=42</b>, ACK=79, data='C'</div>
+        <div class="note b reveal" id="n2" style="left:74%;top:188px;">Host B ACKs receipt of 'C', echoes it back</div>
+        <div class="seglabel reveal" id="s2" style="left:50%;top:262px;"><b>Seq=79</b>, <span class="ack">ACK=43</span>, data='C'</div>
+        <div class="note a reveal" id="n3" style="left:4%;top:300px;">Host A ACKs receipt of the echoed 'C'</div>
+        <div class="seglabel reveal" id="s3" style="left:50%;top:372px;">Seq=43, <span class="ack">ACK=80</span></div>
+      </div>
+
+      <div class="tl-caption" id="tlCap">Press <b>Type 'C'</b> to send the first segment.</div>
+    </div>
+  </section>
+
+  <p class="footer">Sequence numbers count bytes · cumulative ACK = seq # of next byte expected · out-of-order handling is left to the implementer.</p>
+
+</div>
+
+<script>
+/* ---------------- PART 2: telnet echo timeline ---------------- */
+(function(){
+  var order = ['w1','s1','n1','n2','w2','s2','n3','w3','s3','wr'];
+  var steps = [
+    {ids:['n1','w1','s1'], label:"<b>Host A → B.</b> A sends Seq=42 (byte offset of 'C') with data='C'. ACK=79 piggybacks: A expects byte 79 next from B."},
+    {ids:['n2','w2','s2'], label:"<b>Host B → A.</b> B got 'C', so it ACKs 43 (next byte it wants from A) and echoes 'C' back with its own Seq=79."},
+    {ids:['n3','w3','s3','wr'], label:"<b>Host A → B.</b> A received the echoed 'C' (B's byte 79), so it ACKs 80. Notice ACK=80 = B's Seq 79 + 1 byte. No new data, so no echo follows."}
+  ];
+  var idx = 0;
+  var btn = document.getElementById('tlStep');
+  var lbl = document.getElementById('tlStepLabel');
+  var cap = document.getElementById('tlCap');
+
+  function show(ids){ ids.forEach(function(id){ document.getElementById(id).classList.add('on'); }); }
+  function hideAll(){ order.forEach(function(id){ document.getElementById(id).classList.remove('on'); }); }
+
+  function advance(){
+    if(idx >= steps.length){ return; }
+    show(steps[idx].ids);
+    cap.innerHTML = steps[idx].label;
+    idx++;
+    if(idx === 1){ lbl.textContent = 'Next: echo back'; }
+    else if(idx === 2){ lbl.textContent = 'Next: ACK the echo'; }
+    else if(idx >= steps.length){ btn.disabled = true; lbl.textContent = 'Exchange complete'; }
+  }
+  btn.addEventListener('click', advance);
+  document.getElementById('tlReset').addEventListener('click', function(){
+    hideAll(); idx = 0; btn.disabled = false; lbl.textContent = "Type 'C'";
+    cap.innerHTML = "Press <b>Type 'C'</b> to send the first segment.";
+  });
+})();
+
+/* ---------------- PART 1: sliding window ---------------- */
+(function(){
+  var SEGS = 10, BYTES = 50, winSize = 4;
+  var state, network, rcvBase, rcvBuf, ackBase, nextToSend;
+
+  var track=document.getElementById('track');
+  var sSeq=document.getElementById('sSeq'), sLen=document.getElementById('sLen');
+  var rAck=document.getElementById('rAck'), rBuf=document.getElementById('rBuf');
+  var logEl=document.getElementById('simlog');
+  var winSlider=document.getElementById('win'), winOut=document.getElementById('winOut');
+  var dropChk=document.getElementById('dropNext');
+
+  function seqOf(i){ return i*BYTES; }
+  function inWindow(i){ return i>=ackBase && i<ackBase+winSize; }
+  function setLog(h){ logEl.innerHTML=h; }
+
+  function reset(){
+    state=[]; for(var i=0;i<SEGS;i++) state.push('idle');
+    network=[]; rcvBase=0; rcvBuf={}; ackBase=0; nextToSend=0;
+    render();
+    setLog("Press <b>Send next segment</b>. The window N caps how many unacked segments can be in flight at once.");
+  }
+
+  function render(){
+    track.innerHTML='';
+    for(var i=0;i<SEGS;i++){
+      var st=state[i], bg='#a9a496', fg='#3a3730';
+      if(st==='acked'){ bg='#5a8a16'; fg='#fff'; }
+      else if(st==='flight'){ bg='#d9851a'; fg='#3a1f02'; }
+      else if(inWindow(i)){ bg='#2f54c9'; fg='#fff'; }
+      var c=document.createElement('div');
+      c.className='cell';
+      c.style.background=bg; c.style.color=fg;
+      c.innerHTML='<span class="seq">'+seqOf(i)+'</span><span class="id">S'+(i+1)+'</span>';
+      if(rcvBuf[i]){ c.style.outline='2px dashed #7d4ab7'; c.style.outlineOffset='-2px'; }
+      track.appendChild(c);
+    }
+    var bk=Object.keys(rcvBuf).map(function(k){return 'S'+(parseInt(k)+1);});
+    rBuf.textContent = bk.length? bk.join(', ') : 'none';
+    rAck.textContent = seqOf(rcvBase)+' (want S'+(rcvBase+1)+')';
+    if(network.length){ var last=network[network.length-1]; sSeq.textContent=seqOf(last.i); sLen.textContent=BYTES; }
+    else { sSeq.textContent='—'; sLen.textContent='—'; }
+  }
+
+  document.getElementById('btnSend').onclick=function(){
+    if(nextToSend>=SEGS){ setLog('All 10 segments have been sent.'); return; }
+    if(!inWindow(nextToSend)){
+      setLog('<b style="color:#d9851a">Window full.</b> S'+(nextToSend+1)+' sits outside the window of '+winSize+'. Wait for ACKs to slide it forward.');
+      return;
+    }
+    var i=nextToSend, drop=dropChk.checked;
+    state[i]='flight'; network.push({i:i,drop:drop}); nextToSend++;
+    if(drop){
+      dropChk.checked=false;
+      setLog('Sent <b>S'+(i+1)+'</b> (seq '+seqOf(i)+') — but it is <b style="color:#c0392b">dropped in transit</b>. The receiver never sees it, so later segments will arrive out of order.');
+    } else {
+      setLog('Sent <b>S'+(i+1)+'</b> with seq number <b>'+seqOf(i)+'</b>, the byte offset of its first byte. Now in flight. Press <b>Deliver next ACK</b>.');
+    }
+    render();
+  };
+
+  document.getElementById('btnAck').onclick=function(){
+    if(!network.length){ setLog('Nothing in flight. Send a segment first.'); return; }
+    var pkt=network.shift(), i=pkt.i;
+    if(pkt.drop){
+      state[i]='idle';
+      setLog('The dropped S'+(i+1)+' arrives nowhere — no ACK is generated for it.');
+      render(); return;
+    }
+    if(i===rcvBase){
+      rcvBase++;
+      while(rcvBuf[rcvBase]){ delete rcvBuf[rcvBase]; rcvBase++; }
+      for(var k=ackBase;k<rcvBase;k++) state[k]='acked';
+      ackBase=rcvBase;
+      setLog('S'+(i+1)+' arrived <b>in order</b>. Receiver ACKs <b>'+seqOf(rcvBase)+'</b> — the seq # of the next byte expected. This <b>cumulative ACK</b> confirms everything below it, and the window slides.');
+    } else if(i>rcvBase){
+      rcvBuf[i]=true; state[i]='flight';
+      setLog('S'+(i+1)+' arrived <b style="color:#2f54c9">out of order</b> (receiver still wants S'+(rcvBase+1)+'). It is buffered and the receiver re-sends the <b>same cumulative ACK '+seqOf(rcvBase)+'</b> — a duplicate ACK.');
+    } else {
+      setLog('S'+(i+1)+' was already covered by a cumulative ACK. The duplicate is discarded.');
+    }
+    render();
+  };
+
+  document.getElementById('btnReset').onclick=reset;
+  winSlider.oninput=function(){ winSize=parseInt(this.value); winOut.textContent=winSize+' segments'; render(); };
+
+  reset();
+})();
+</script>
+</body>
+</html>
